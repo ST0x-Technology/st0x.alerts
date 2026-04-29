@@ -1,0 +1,29 @@
+# Fill in your Tenderly account and project slugs.
+# These must match the values in your Tenderly dashboard.
+account_id: ""
+project_slug: ""
+
+actions:
+  # ── Equity price-push monitoring (periodic) ───────────────────────────────
+  # Runs every 15 minutes. Alerts via Telegram if the bot wallet has NOT pushed
+  # equity prices on-chain within a US equity trading session window.
+  #
+  # Required secrets (set in Tenderly dashboard → Project → Secrets):
+  #   TENDERLY_ACCESS_KEY       – Tenderly API key (same as CI secret)
+  #   TENDERLY_ACCOUNT_SLUG     – your Tenderly account slug
+  #   TENDERLY_PROJECT_SLUG     – your Tenderly project slug
+  #   TENDERLY_NETWORK_ID       – EVM network/chain ID (e.g. "137" for Polygon)
+  #   TELEGRAM_BOT_TOKEN        – Telegram bot token for alerts
+  #   TELEGRAM_CHAT_ID          – Telegram chat/channel ID to post alerts to
+  #   ORACLE_CONTRACT_ADDRESS   – (optional) restrict valid pushes to this address
+  equityPricePushMonitor:
+    runtime: v2
+    description: "Alert if equity price-push bot wallet misses a price push during US trading sessions"
+    trigger:
+      type: periodic
+      periodic:
+        cron: "*/15 * * * *"
+        timezone: UTC
+    function: equityPricePushMonitor:handleEquityPricePushMonitor
+    execution:
+      type: sequential
