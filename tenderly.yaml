@@ -16,6 +16,8 @@ actions:
   #   TELEGRAM_BOT_TOKEN        – Telegram bot token for alerts
   #   TELEGRAM_CHAT_ID          – Telegram chat/channel ID to post alerts to
   #   ORACLE_CONTRACT_ADDRESS   – (optional) restrict valid pushes to this address
+  #   BASE_RPC_URL              – (optional) Base RPC endpoint (default: https://mainnet.base.org)
+  #   MIN_ETH_BALANCE_ETH       – (optional) alert threshold in ETH (default: 0.01)
   equityPricePushMonitor:
     runtime: v2
     description: "Alert if equity price-push bot wallet misses a price push during US trading sessions"

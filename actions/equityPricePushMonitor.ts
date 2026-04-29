@@ -187,6 +187,81 @@ function getActiveSession(nowUtcMs: number): ActiveSession | null {
 	return null;
 }
 
+// ── Wallet Balance Check (Base) ───────────────────────────────────────────────
+
+const BASE_RPC_FALLBACK = 'https://mainnet.base.org';
+const MIN_ETH_BALANCE_FALLBACK = 0.01; // ETH
+const BALANCE_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // re-alert at most once per hour
+const BALANCE_STORAGE_KEY = 'equity_push_monitor:balance_low:last_alert_utcMs';
+
+async function fetchEthBalanceOnBase(context: Context): Promise<number> {
+	const rpcUrl = (await context.secrets.get('BASE_RPC_URL').catch(() => null)) ?? BASE_RPC_FALLBACK;
+
+	const res = await fetch(rpcUrl, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'eth_getBalance',
+			params: [BOT_WALLET, 'latest'],
+		}),
+	});
+
+	if (!res.ok) throw new Error(`Base RPC ${res.status}: ${await res.text()}`);
+
+	const data = (await res.json()) as { result?: string; error?: { message: string } };
+	if (data.error) throw new Error(`eth_getBalance error: ${data.error.message}`);
+
+	// result is a hex wei string; convert to ETH
+	return Number(BigInt(data.result ?? '0x0')) / 1e18;
+}
+
+async function checkWalletBalance(context: Context, nowUtcMs: number): Promise<void> {
+	let balanceEth: number;
+	try {
+		balanceEth = await fetchEthBalanceOnBase(context);
+	} catch (err) {
+		console.error('[equity-monitor] Balance check failed:', err);
+		return;
+	}
+
+	const rawThreshold = await context.secrets.get('MIN_ETH_BALANCE_ETH').catch(() => null);
+	const thresholdEth = rawThreshold ? parseFloat(rawThreshold) : MIN_ETH_BALANCE_FALLBACK;
+
+	console.log(`[equity-monitor] Base ETH balance: ${balanceEth.toFixed(6)} ETH (threshold: ${thresholdEth} ETH)`);
+
+	if (balanceEth >= thresholdEth) return;
+
+	// Cooldown: don't spam if already alerted recently
+	const stored = (await context.storage.getJson(BALANCE_STORAGE_KEY).catch(() => null)) as Record<
+		string,
+		unknown
+	> | null;
+	const lastAlertMs = typeof stored?.lastAlertUtcMs === 'number' ? stored.lastAlertUtcMs : 0;
+	if (nowUtcMs - lastAlertMs < BALANCE_ALERT_COOLDOWN_MS) {
+		console.log('[equity-monitor] Low balance already alerted within cooldown window — skipping.');
+		return;
+	}
+
+	const msg = [
+		'⚠️ <b>Bot Wallet Low ETH Balance – Base</b>',
+		'',
+		'<b>Bot wallet:</b>',
+		`<code>${BOT_WALLET}</code>`,
+		'',
+		`<b>Current balance:</b> ${balanceEth.toFixed(6)} ETH`,
+		`<b>Threshold:</b> ${thresholdEth} ETH`,
+		'',
+		'<b>Action:</b>',
+		'Top up the wallet on Base before the bot runs out of gas and fails to push prices.',
+	].join('\n');
+
+	console.warn('[equity-monitor] Low balance — sending alert.');
+	await sendTelegram(context, msg);
+	await context.storage.putJson(BALANCE_STORAGE_KEY, { lastAlertUtcMs: nowUtcMs, balanceEth });
+}
+
 // ── On-Chain Transaction Query ────────────────────────────────────────────────
 
 interface TxRecord {
@@ -316,6 +391,8 @@ function buildAlertMessage(session: ActiveSession, nowUtcMs: number): string {
 export const handleEquityPricePushMonitor: ActionFn = async (context: Context, _event: Event) => {
 	const nowUtcMs = Date.now();
 	console.log(`[equity-monitor] ${new Date(nowUtcMs).toISOString()} / ${etDisplayTime(nowUtcMs)}`);
+
+	await checkWalletBalance(context, nowUtcMs);
 
 	const session = getActiveSession(nowUtcMs);
 	if (!session) {
