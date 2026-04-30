@@ -1,31 +1,26 @@
-# Fill in your Tenderly account and project slugs.
-# These must match the values in your Tenderly dashboard.
-account_id: ""
-project_slug: ""
-
+account_id: "Darwin"
+project_slug: "project"
 actions:
-  # ── Equity price-push monitoring (periodic) ───────────────────────────────
-  # Runs every 15 minutes. Alerts via Telegram if the bot wallet has NOT pushed
-  # equity prices on-chain within a US equity trading session window.
-  #
-  # Required secrets (set in Tenderly dashboard → Project → Secrets):
-  #   TENDERLY_ACCESS_KEY       – Tenderly API key (same as CI secret)
-  #   TENDERLY_ACCOUNT_SLUG     – your Tenderly account slug
-  #   TENDERLY_PROJECT_SLUG     – your Tenderly project slug
-  #   TENDERLY_NETWORK_ID       – EVM network/chain ID (e.g. "137" for Polygon)
-  #   TELEGRAM_BOT_TOKEN        – Telegram bot token for alerts
-  #   TELEGRAM_CHAT_ID          – Telegram chat/channel ID to post alerts to
-  #   ORACLE_CONTRACT_ADDRESS   – (optional) restrict valid pushes to this address
-  #   BASE_RPC_URL              – (optional) Base RPC endpoint (default: https://mainnet.base.org)
-  #   MIN_ETH_BALANCE_ETH       – (optional) alert threshold in ETH (default: 0.01)
-  equityPricePushMonitor:
+  Darwin/project:
     runtime: v2
-    description: "Alert if equity price-push bot wallet misses a price push during US trading sessions"
-    trigger:
-      type: periodic
-      periodic:
-        cron: "*/15 * * * *"
-        timezone: UTC
-    function: equityPricePushMonitor:handleEquityPricePushMonitor
-    execution:
-      type: sequential
+    sources: actions
+    specs:
+      equityPricePushMonitor:
+        description: >
+          Runs every 15 minutes. Alerts via Telegram if bot wallet 0x08b20026003f3dF0E699D30B76E69C368dd2aa6c has not pushed equity prices on-chain during US trading session windows (pre-market, regular, post-market) on Base Mainnet. Also alerts if the wallet ETH balance falls below the configured threshold.
+
+        function: equityPricePushMonitor:handleEquityPricePushMonitor
+        trigger:
+          type: periodic
+          periodic:
+            cron: "*/15 * * * *"
+
+# Required secrets (Tenderly dashboard → Project → Secrets):
+#   TENDERLY_ACCESS_KEY       – Tenderly API key
+#   TENDERLY_ACCOUNT_SLUG     – Tenderly account slug (Darwin)
+#   TENDERLY_PROJECT_SLUG     – Tenderly project slug (project)
+#   TELEGRAM_BOT_TOKEN        – Telegram bot token
+#   TELEGRAM_CHAT_ID          – Telegram chat/channel ID
+#   ORACLE_CONTRACT_ADDRESS   – (optional) restrict valid pushes to this address
+#   BASE_RPC_URL              – (optional) Base RPC endpoint (default: https://mainnet.base.org)
+#   MIN_ETH_BALANCE_ETH       – (optional) low balance alert threshold in ETH (default: 0.01)
