@@ -119,6 +119,14 @@ function buildEarlyClosesForYear(year: number): Record<string, number> {
     earlyCloses[isoDate(year, 11, 24)] = 13;
   }
 
+  // July 3 early close when both July 3 and July 4 are weekdays.
+  // When July 4 falls on Saturday, July 3 is the observed full holiday instead — skip.
+  const jul3Dow = new Date(Date.UTC(year, 6, 3)).getUTCDay();
+  const jul4Dow = new Date(Date.UTC(year, 6, 4)).getUTCDay();
+  if (jul3Dow >= 1 && jul3Dow <= 5 && jul4Dow >= 1 && jul4Dow <= 5) {
+    earlyCloses[isoDate(year, 6, 3)] = 13;
+  }
+
   return earlyCloses;
 }
 
