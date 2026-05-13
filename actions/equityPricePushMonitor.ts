@@ -616,19 +616,6 @@ export function createEquityPricePushMonitor(
       return;
     }
 
-    // Dedup: alert at most once per session per day
-    const storageKey = `${storagePrefix}:${session.dateStr}:${session.def.name}`;
-    const stored = (await context.storage
-      .getJson(storageKey)
-      .catch(() => null)) as Record<string, unknown> | null;
-
-    if (stored?.alerted === true) {
-      console.log(
-        `[equity-monitor] Already alerted for ${session.def.name} on ${session.dateStr}.`,
-      );
-      return;
-    }
-
     let pushFound = false;
     try {
       pushFound = await hasValidPush(context, session, botWallet);
@@ -642,20 +629,12 @@ export function createEquityPricePushMonitor(
       console.log(
         `[equity-monitor] Valid push found for ${session.def.name} on ${session.dateStr}.`,
       );
-      await context.storage.putJson(storageKey, {
-        alerted: false,
-        pushFoundAtUtcMs: nowUtcMs,
-      });
       return;
     }
 
     const msg = buildAlertMessage(session, nowUtcMs, botWallet);
     console.warn("[equity-monitor] No push detected — sending alert.");
     await sendTelegram(context, msg);
-    await context.storage.putJson(storageKey, {
-      alerted: true,
-      alertedAtUtcMs: nowUtcMs,
-    });
   };
 }
 
