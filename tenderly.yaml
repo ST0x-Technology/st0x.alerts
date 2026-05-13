@@ -7,13 +7,22 @@ actions:
     specs:
       equityPricePushMonitor:
         description: >
-          Runs every 15 minutes. Alerts via Telegram if bot wallet 0x08b20026003f3dF0E699D30B76E69C368dd2aa6c has not pushed equity prices on-chain during US trading session windows (pre-market, regular, post-market) on Base Mainnet. Also alerts if the wallet ETH balance falls below the configured threshold.
+          Runs every 5 minutes. Alerts via Telegram if bot wallet 0x08b20026003f3dF0E699D30B76E69C368dd2aa6c has not pushed equity prices on-chain during US trading session windows (pre-market, regular, post-market) on Base Mainnet. Also alerts if the wallet ETH balance falls below the configured threshold.
 
         function: equityPricePushMonitor:handleEquityPricePushMonitor
         trigger:
           type: periodic
           periodic:
-            cron: "*/15 * * * *"
+            cron: "*/5 * * * *"
+      equityPricePushMonitorTest:
+        description: >
+          Test copy of equity push monitor for wallet 0x82245c7b71871D1A5b3FeBc161437fcE872E1817 on Base. Uses separate storage keys from production. Disable or remove after validation.
+
+        function: equityPricePushMonitorTest:handleEquityPricePushMonitorTest
+        trigger:
+          type: periodic
+          periodic:
+            cron: "*/5 * * * *"
 
 # Required secrets (Tenderly dashboard → Project → Secrets):
 #   TENDERLY_ACCESS_KEY       – Tenderly API key
