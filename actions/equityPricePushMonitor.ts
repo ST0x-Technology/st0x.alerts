@@ -434,9 +434,9 @@ async function fetchRecentTransactions(
   )) as string;
   const latestBlock = parseInt(latestBlockHex, 16);
 
-  // Cap lookback to 10 minutes — bot pushes every 5 min, so 10 min is enough to detect a miss.
+  // Cap lookback to 7 minutes — bot pushes every 5 min, gives 2 min buffer for jitter.
   // Avoids hitting public RPC eth_getLogs block-range limits (~2000 blocks).
-  const cappedSinceMs = Math.max(sinceUtcMs, Date.now() - 10 * 60 * 1000);
+  const cappedSinceMs = Math.max(sinceUtcMs, Date.now() - 7 * 60 * 1000);
   const blocksBack = Math.ceil((Date.now() - cappedSinceMs) / 2000) + 30;
   const fromBlock = `0x${Math.max(0, latestBlock - blocksBack).toString(16)}`;
 
