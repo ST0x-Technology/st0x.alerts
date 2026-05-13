@@ -4,7 +4,6 @@ import type { ActionFn, Context, Event } from "@tenderly/actions";
 
 const PROD_BOT_WALLET =
   "0x08b20026003f3dF0E699D30B76E69C368dd2aa6c".toLowerCase();
-const BASE_NETWORK_ID = "8453";
 
 /** Tenderly throws (e.g. SecretNotFound) when a secret is not defined; optional secrets must use this. */
 async function tryGetSecret(
@@ -287,11 +286,32 @@ function getActiveSession(nowUtcMs: number): ActiveSession | null {
   return null;
 }
 
+// ── Base RPC Helper ───────────────────────────────────────────────────────────
+
+async function rpcPost(
+  rpcUrl: string,
+  method: string,
+  params: unknown[],
+): Promise<unknown> {
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!res.ok) throw new Error(`Base RPC ${res.status}: ${await res.text()}`);
+  const data = (await res.json()) as {
+    result?: unknown;
+    error?: { message: string };
+  };
+  if (data.error) throw new Error(`RPC ${method} error: ${data.error.message}`);
+  return data.result;
+}
+
 // ── Wallet Balance Check (Base) ───────────────────────────────────────────────
 
 const BASE_RPC_FALLBACK = "https://mainnet.base.org";
 const MIN_ETH_BALANCE_FALLBACK = 0.01; // ETH
-const BALANCE_ALERT_COOLDOWN_MS = 15 * 60 * 1000; // re-alert at most once per 15 minutes
+const BALANCE_ALERT_COOLDOWN_MS = 0;
 
 async function fetchEthBalanceOnBase(
   context: Context,
@@ -344,7 +364,7 @@ async function checkWalletBalance(
     : MIN_ETH_BALANCE_FALLBACK;
 
   console.log(
-    `[equity-monitor] Base ETH balance: ${balanceEth.toFixed(6)} ETH (threshold: ${thresholdEth} ETH)`,
+    `[equity-monitor] Base ETH balance: ${balanceEth.toFixed(18)} ETH (threshold: ${thresholdEth} ETH)`,
   );
 
   if (balanceEth >= thresholdEth) return;
@@ -368,7 +388,7 @@ async function checkWalletBalance(
     "<b>Bot wallet:</b>",
     `<code>${botWallet}</code>`,
     "",
-    `<b>Current balance:</b> ${balanceEth.toFixed(6)} ETH`,
+    `<b>Current balance:</b> ${balanceEth.toFixed(18)} ETH`,
     `<b>Threshold:</b> ${thresholdEth} ETH`,
     "",
     "<b>Action:</b>",
@@ -396,48 +416,74 @@ interface TxRecord {
 async function fetchRecentTransactions(
   context: Context,
   sinceUtcMs: number,
-  botWallet: string,
+  oracleAddress: string | null,
 ): Promise<TxRecord[]> {
-  const accessKey = await context.secrets.get("TENDERLY_ACCESS_KEY");
-  const accountSlug = await context.secrets.get("TENDERLY_ACCOUNT_SLUG");
-  const projectSlug = await context.secrets.get("TENDERLY_PROJECT_SLUG");
+  const rpcUrl =
+    (await tryGetSecret(context, "BASE_RPC_URL")) ?? BASE_RPC_FALLBACK;
 
-  if (!accessKey || !accountSlug || !projectSlug) {
+  if (!oracleAddress) {
     throw new Error(
-      "Missing Tenderly secrets — ensure TENDERLY_ACCESS_KEY, TENDERLY_ACCOUNT_SLUG, and TENDERLY_PROJECT_SLUG are set",
+      "ORACLE_CONTRACT_ADDRESS secret is required for transaction fetching",
     );
   }
 
-  const params = new URLSearchParams({
-    "filter[from]": botWallet,
-    "filter[network_id]": BASE_NETWORK_ID,
-    "filter[after]": new Date(sinceUtcMs).toISOString(),
-    "sort[by]": "timestamp",
-    "sort[order]": "desc",
-    "page[size]": "50",
-  });
+  const latestBlockHex = (await rpcPost(
+    rpcUrl,
+    "eth_blockNumber",
+    [],
+  )) as string;
+  const latestBlock = parseInt(latestBlockHex, 16);
 
-  const url = `https://api.tenderly.co/api/v1/account/${accountSlug}/project/${projectSlug}/transactions?${params}`;
-  const res = await fetch(url, { headers: { "X-Access-Key": accessKey } });
+  // Cap lookback to 10 minutes — bot pushes every 5 min, so 10 min is enough to detect a miss.
+  // Avoids hitting public RPC eth_getLogs block-range limits (~2000 blocks).
+  const cappedSinceMs = Math.max(sinceUtcMs, Date.now() - 10 * 60 * 1000);
+  const blocksBack = Math.ceil((Date.now() - cappedSinceMs) / 2000) + 30;
+  const fromBlock = `0x${Math.max(0, latestBlock - blocksBack).toString(16)}`;
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Tenderly API ${res.status}: ${body.slice(0, 300)}`);
+  console.log(
+    `[equity-monitor] Querying logs from block ${latestBlock - blocksBack} to latest for oracle ${oracleAddress}`,
+  );
+
+  const logs = (await rpcPost(rpcUrl, "eth_getLogs", [
+    { fromBlock, toBlock: "latest", address: oracleAddress },
+  ])) as { transactionHash: string }[];
+
+  const uniqueHashes = [...new Set(logs.map((l) => l.transactionHash))];
+  console.log(
+    `[equity-monitor] Found ${logs.length} logs / ${uniqueHashes.length} unique txs from oracle`,
+  );
+
+  const txRecords: TxRecord[] = [];
+  for (const hash of uniqueHashes) {
+    const [tx, receipt] = (await Promise.all([
+      rpcPost(rpcUrl, "eth_getTransactionByHash", [hash]),
+      rpcPost(rpcUrl, "eth_getTransactionReceipt", [hash]),
+    ])) as [
+      {
+        hash: string;
+        from: string;
+        to: string | null;
+        blockNumber: string;
+      } | null,
+      { status: string } | null,
+    ];
+    if (!tx) continue;
+
+    const block = (await rpcPost(rpcUrl, "eth_getBlockByNumber", [
+      tx.blockNumber,
+      false,
+    ])) as { timestamp: string };
+
+    txRecords.push({
+      hash: tx.hash,
+      from: tx.from.toLowerCase(),
+      to: tx.to ? tx.to.toLowerCase() : null,
+      status: receipt ? parseInt(receipt.status, 16) === 1 : false,
+      timestampMs: parseInt(block.timestamp, 16) * 1000,
+    });
   }
 
-  const data = (await res.json()) as {
-    transactions?: Record<string, unknown>[];
-  };
-  return (data.transactions ?? []).map((tx) => ({
-    hash: String(tx["hash"] ?? ""),
-    from: String(tx["from"] ?? "").toLowerCase(),
-    to: tx["to"] ? String(tx["to"]).toLowerCase() : null,
-    status: Boolean(tx["status"]),
-    timestampMs:
-      typeof tx["timestamp"] === "string"
-        ? new Date(tx["timestamp"]).getTime()
-        : Number(tx["timestamp_unix"] ?? 0) * 1000,
-  }));
+  return txRecords;
 }
 
 async function hasValidPush(
@@ -452,7 +498,7 @@ async function hasValidPush(
   const txs = await fetchRecentTransactions(
     context,
     session.sessionStartUtcMs,
-    botWallet,
+    oracleAddr,
   );
 
   for (const tx of txs) {

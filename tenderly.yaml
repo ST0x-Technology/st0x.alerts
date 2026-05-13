@@ -1,7 +1,7 @@
-account_id: "Darwin"
+account_id: "MrFlourite"
 project_slug: "project"
 actions:
-  Darwin/project:
+  MrFlourite/project:
     runtime: v2
     sources: actions
     specs:
@@ -26,7 +26,7 @@ actions:
 
 # Required secrets (Tenderly dashboard → Project → Secrets):
 #   TENDERLY_ACCESS_KEY       – Tenderly API key
-#   TENDERLY_ACCOUNT_SLUG     – Tenderly account slug (Darwin)
+#   TENDERLY_ACCOUNT_SLUG     – Tenderly account slug (MrFlourite)
 #   TENDERLY_PROJECT_SLUG     – Tenderly project slug (project)
 #   TELEGRAM_BOT_TOKEN        – Telegram bot token
 #   TELEGRAM_CHAT_ID          – Telegram chat/channel ID
