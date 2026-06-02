@@ -27,7 +27,7 @@ wallet's ETH balance is too low.
 | Alert              | Condition                                                                                                                     |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | Missing price push | Bot wallet has not sent a transaction to the oracle contract within the current trading session window, past the grace period |
-| Low ETH balance    | Bot wallet balance on Base falls below `MIN_ETH_BALANCE_ETH` (default: 0.01 ETH)                                              |
+| Low ETH balance    | Bot wallet balance on Base falls below `MIN_ETH_BALANCE_ETH` (default: 0.01 ETH); alert is rate-limited to once per hour      |
 
 ### Trading session windows (US Eastern)
 
