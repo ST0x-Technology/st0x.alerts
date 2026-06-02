@@ -319,7 +319,7 @@ async function rpcPost(
 
 const BASE_RPC_FALLBACK = "https://mainnet.base.org";
 const MIN_ETH_BALANCE_FALLBACK = 0.01; // ETH
-const BALANCE_ALERT_COOLDOWN_MS = 0;
+const BALANCE_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 async function fetchEthBalanceOnBase(
   context: Context,
